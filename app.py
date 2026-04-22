@@ -56,14 +56,14 @@ if uploaded_file:
         if df[prod_col].dtype == object:
             df[prod_col] = df[prod_col].str.replace(',', '.').astype(float)
         
-        # Zeit-Hilfsspalten
+        # Zeit-Hilfsspalten generieren
         df['Jahr_Val'] = df[date_col].dt.year
         df['Monat_Label'] = df[date_col].dt.strftime('%B %Y')
         df['KW_Label'] = df[date_col].apply(lambda x: f"KW {x.isocalendar().week} {x.year}")
         df['Tag_Label'] = df[date_col].dt.strftime('%d.%m.%Y')
-        df['Quartal'] = df[date_col].dt.quarter
+        df['Quartal_Label'] = df[date_col].apply(lambda x: f"{(x.month-1)//3 + 1}. Quartal {x.year}")
 
-        # --- Globaler Filter (Karten & Details) ---
+        # --- Globaler Filter (Obere Karten & Details) ---
         sel_col_global, _ = st.columns([1.5, 3])
         with sel_col_global:
             if st.session_state.filter_type == 'Jahr':
@@ -87,28 +87,27 @@ if uploaded_file:
         m4.markdown(f'<div class="metric-card"><small>CO2 Ersparnis</small><h3>{filtered_df[prod_col].sum()*0.35:.2f} kg</h3></div>', unsafe_allow_html=True)
         m5.markdown(f'<div class="metric-card"><small>Peak</small><h3>{filtered_df[prod_col].max():.2f} kWh</h3></div>', unsafe_allow_html=True)
 
-        # --- REIHE 2: Energiefluss (Erweiterte Filter) & Strings ---
+        # --- REIHE 2: Energiefluss & Strings ---
         col_main, col_side = st.columns([2, 1])
         with col_main:
             with st.container(border=True):
                 st.markdown("**📊 Energiefluss**")
-                # Neue Filter-Ebene für Energiefluss
                 ef1, ef2 = st.columns(2)
                 with ef1:
                     ef_mode = st.radio("Ansicht", ["Woche", "Quartal", "Jahr"], horizontal=True, label_visibility="collapsed")
                 with ef2:
                     if ef_mode == "Woche":
-                        all_kws = df.sort_values(by=date_col, ascending=False)['KW_Label'].unique()
-                        kw_sel = st.selectbox("Zeitraum", all_kws, label_visibility="collapsed")
-                        flow_df = df[df['KW_Label'] == kw_sel]
+                        opts = df.sort_values(by=date_col, ascending=False)['KW_Label'].unique()
+                        sel = st.selectbox("Zeitraum", opts, label_visibility="collapsed", key="ef_w")
+                        flow_df = df[df['KW_Label'] == sel]
                     elif ef_mode == "Quartal":
-                        q_options = sorted(df[df['Jahr_Val'] == datetime.now().year]['Quartal'].unique())
-                        q_sel = st.selectbox("Quartal (2026)", q_options, format_func=lambda x: f"{x}. Quartal", label_visibility="collapsed")
-                        flow_df = df[(df['Jahr_Val'] == datetime.now().year) & (df['Quartal'] == q_sel)]
+                        opts = df.sort_values(by=date_col, ascending=False)['Quartal_Label'].unique()
+                        sel = st.selectbox("Zeitraum", opts, label_visibility="collapsed", key="ef_q")
+                        flow_df = df[df['Quartal_Label'] == sel]
                     else:
-                        y_options = sorted(df['Jahr_Val'].unique(), reverse=True)
-                        y_sel = st.selectbox("Jahr", y_options, label_visibility="collapsed")
-                        flow_df = df[df['Jahr_Val'] == y_sel]
+                        opts = sorted(df['Jahr_Val'].unique(), reverse=True)
+                        sel = st.selectbox("Zeitraum", opts, label_visibility="collapsed", key="ef_y")
+                        flow_df = df[df['Jahr_Val'] == sel]
                 
                 fig_fluss = px.area(flow_df.sort_values(by=date_col), x=date_col, y=prod_col, color_discrete_sequence=['#f39c12'])
                 fig_fluss.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=300, xaxis_title=None, yaxis_title="kWh", plot_bgcolor='rgba(0,0,0,0)')
@@ -121,7 +120,7 @@ if uploaded_file:
                 fig_pie.update_layout(margin=dict(l=0, r=0, t=0, b=10), height=250, showlegend=True)
                 st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
 
-        # --- REIHE 3: Details & Speicher ---
+        # --- REIHE 3: Details ---
         col_bot_left, col_bot_right = st.columns([2, 1])
         with col_bot_left:
             with st.container(border=True):
