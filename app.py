@@ -6,45 +6,56 @@ import plotly.express as px
 st.set_page_config(page_title="Florians Solar-Dashboard", layout="wide")
 
 st.title("☀️ Florians Solar-Dashboard")
-st.write("Analysiere deine Erträge und optimiere deine Autarkie.")
+st.write("Analysiere deine Erträge.")
 
-# Datei-Upload Funktion
-uploaded_file = st.file_uploader("Lade deine Anker/Solar-CSV hoch", type=["csv"])
+uploaded_file = st.file_uploader("Lade deine CSV hoch", type=["csv"])
 
 if uploaded_file is not None:
-    # Daten einlesen (Trennzeichen bei Anker-Exports oft Tabulator oder Komma)
-    df = pd.read_csv(uploaded_file, sep='\t')
-    
-    # Spaltennamen bereinigen (Leerzeichen entfernen)
-    df.columns = df.columns.str.strip()
-    
-    # Datum konvertieren
-    df['Date'] = pd.to_datetime(df['Date'])
-    
-    # Kennzahlen berechnen
-    total_production = df['Electricity Production-(kWh)'].sum()
-    avg_production = df['Electricity Production-(kWh)'].mean()
-    max_day = df.loc[df['Electricity Production-(kWh)'].idxmax()]
+    # Versuche verschiedene Trennzeichen (Anker/Excel nutzen oft Tab oder Semikolon)
+    try:
+        # Erst mit Tabulator versuchen
+        df = pd.read_csv(uploaded_file, sep=None, engine='python')
+        
+        # Spaltennamen säubern (Leerzeichen und Tabs entfernen)
+        df.columns = [str(col).strip() for col in df.columns]
+        
+        # Suche die richtige Spalte, auch wenn sie leicht anders heißt
+        prod_col = None
+        for col in df.columns:
+            if 'Production' in col or 'Erzeugung' in col or 'kWh' in col:
+                prod_col = col
+                break
+        
+        date_col = None
+        for col in df.columns:
+            if 'Date' in col or 'Datum' in col or 'Zeit' in col:
+                date_col = col
+                break
 
-    # Layout: Drei Spalten für die wichtigsten Zahlen
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Gesamtertrag", f"{total_production:.2f} kWh")
-    col2.metric("Ø Ertrag/Tag", f"{avg_production:.2f} kWh")
-    col3.metric("Bester Tag", f"{max_day['Electricity Production-(kWh)']:.2f} kWh", delta=max_day['Date'].strftime('%d.%m.%Y'))
+        if prod_col and date_col:
+            # Daten konvertieren
+            df[date_col] = pd.to_datetime(df[date_col])
+            # Sicherstellen, dass die Werte Zahlen sind (Punkte/Kommas korrigieren)
+            if df[prod_col].dtype == object:
+                df[prod_col] = df[prod_col].str.replace(',', '.').astype(float)
+            
+            # Kennzahlen
+            total_production = df[prod_col].sum()
+            avg_production = df[prod_col].mean()
 
-    # Grafik: Ertragsverlauf
-    st.subheader("Ertragsverlauf über die Zeit")
-    fig = px.line(df, x='Date', y='Electricity Production-(kWh)', 
-                  title='Tageserträge in kWh',
-                  line_shape='spline',
-                  render_mode='svg')
-    fig.update_traces(line_color='#FFA500')
-    st.plotly_chart(fig, use_container_width=True)
+            col1, col2 = st.columns(2)
+            col1.metric("Gesamtertrag", f"{total_production:.2f} kWh")
+            col2.metric("Ø Ertrag/Tag", f"{avg_production:.2f} kWh")
 
-    # Tabelle für Details
-    with st.expander("Rohdaten anzeigen"):
-        st.dataframe(df.sort_values(by='Date', ascending=False))
-
+            # Grafik
+            fig = px.line(df, x=date_col, y=prod_col, title='Ertragsverlauf')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.dataframe(df)
+        else:
+            st.error(f"Spalten nicht gefunden. Vorhanden sind: {list(df.columns)}")
+            
+    except Exception as e:
+        st.error(f"Fehler beim Lesen der Datei: {e}")
 else:
-    st.info("Bitte lade eine CSV-Datei hoch, um die Analyse zu starten.")
-
+    st.info("Bitte lade eine Datei hoch.")
